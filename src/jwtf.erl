@@ -175,7 +175,12 @@ key(Props, Checks, KS) ->
         {true, undefined} ->
             throw({error, missing_kid});
         {_, KID} ->
-            KS(Alg, KID)
+            case KS(Alg, KID) of
+                {error, Reason} ->
+                    throw({error, {key, {Alg, KID}, Reason}});
+                Key ->
+                    Key
+            end
     end.
 
 
@@ -358,6 +363,15 @@ invalid_exp_test() ->
 missing_kid_test() ->
     Encoded = encode({[]}, {[]}),
     ?assertEqual({error, missing_kid}, decode(Encoded, [kid], nil)).
+
+
+public_key_not_found_test() ->
+    Encoded = encode(
+        {[{<<"alg">>, <<"RS256">>}, {<<"kid">>, <<"1">>}]},
+        {[]}),
+    KS = fun(_, _) -> {error, not_found} end,
+    Expected = {error, {key, {<<"RS256">>, <<"1">>}, not_found}},
+    ?assertEqual(Expected, decode(Encoded, [], KS)).
 
 
 bad_rs256_sig_test() ->
