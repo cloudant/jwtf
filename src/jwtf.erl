@@ -19,11 +19,15 @@
 
 -export([decode/3]).
 
+-type keystore() :: fun((binary() :: Alg, binary() :: KID) -> binary() | no_return()).
+-type json_object() :: tuple(list()).
+
 % @doc decode
 % Decodes the supplied encoded token, checking
 % for the attributes defined in Checks and calling
 % the key store function to retrieve the key needed
 % to verify the signature
+-spec decode(binary(), list(), keystore()) -> {ok, json_object()} | {error, term()}.
 decode(EncodedToken, Checks, KS) ->
     try
         [Header, Payload, Signature] = split(EncodedToken),
@@ -358,6 +362,14 @@ invalid_exp_test() ->
 missing_kid_test() ->
     Encoded = encode({[]}, {[]}),
     ?assertEqual({error, missing_kid}, decode(Encoded, [kid], nil)).
+
+
+unknown_key_test() ->
+    Encoded = encode(
+        {[{<<"typ">>, <<"JWT">>}, {<<"alg">>, <<"RS256">>}]},
+        {[]}),
+    KS = fun(_, _) -> throw({error, unknown_key}) end,
+    ?assertEqual({error, unknown_key}, decode(Encoded, [], KS)).
 
 
 bad_rs256_sig_test() ->
