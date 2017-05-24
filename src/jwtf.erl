@@ -175,12 +175,7 @@ key(Props, Checks, KS) ->
         {true, undefined} ->
             throw({error, missing_kid});
         {_, KID} ->
-            case KS(Alg, KID) of
-                {error, Reason} ->
-                    throw({error, {key, {Alg, KID}, Reason}});
-                Key ->
-                    Key
-            end
+            KS(Alg, KID)
     end.
 
 
@@ -369,8 +364,8 @@ public_key_not_found_test() ->
     Encoded = encode(
         {[{<<"alg">>, <<"RS256">>}, {<<"kid">>, <<"1">>}]},
         {[]}),
-    KS = fun(_, _) -> {error, not_found} end,
-    Expected = {error, {key, {<<"RS256">>, <<"1">>}, not_found}},
+    KS = fun(_, _) -> throw({error, not_found}) end,
+    Expected = {error, not_found},
     ?assertEqual(Expected, decode(Encoded, [], KS)).
 
 
