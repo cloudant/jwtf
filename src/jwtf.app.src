@@ -20,9 +20,9 @@
         stdlib,
         b64url,
         crypto,
-        ets_lru,
         ibrowse,
         jiffy,
+        ssl,
         public_key
     ]},
     {env,[]},

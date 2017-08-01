@@ -14,45 +14,32 @@
 % This module fetches and parses JSON Web Key Sets (JWKS).
 
 -module(jwks).
+-behaviour(gen_server).
 
+%% public api
 -export([
-    get_key/3,
-    get_keyset/1
+    get_key/2
+]).
+
+%% gen_server api
+-export([
+    start_link/0,
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    code_change/3,
+    terminate/2
 ]).
 
 -include_lib("public_key/include/public_key.hrl").
 
-get_key(Url, Kty, Kid) ->
-    case lookup(Url, Kty, Kid) of
-        {ok, Key} ->
+get_key(Kty, Kid) ->
+    case ets:lookup(?MODULE, {Kty, Kid}) of
+        [{{Kty, Kid}, Key}] ->
             {ok, Key};
-        {error, not_found} ->
-            case update_cache(Url) of
-                ok ->
-                    lookup(Url, Kty, Kid);
-                {error, Reason} ->
-                    {error, Reason}
-            end
-    end.
-
-
-lookup(Url, Kty, Kid) ->
-    case ets_lru:lookup_d(jwks_cache_lru, {Url, Kty, Kid}) of
-        {ok, Key} ->
-            {ok, Key};
-        not_found ->
+        [] ->
             {error, not_found}
-    end.
-
-
-update_cache(Url) ->
-    case get_keyset(Url) of
-        {ok, KeySet} ->
-            [ets_lru:insert(jwks_cache_lru, {Url, Kty, Kid}, Key)
-                || {{Kty, Kid}, Key} <- KeySet],
-            ok;
-        {error, Reason} ->
-            {error, Reason}
     end.
 
 
@@ -110,6 +97,78 @@ parse_key({Props}) ->
 
 decode_number(Base64) ->
     crypto:bytes_to_integer(b64url:decode(Base64)).
+
+
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+
+init(_) ->
+    ?MODULE = ets:new(?MODULE, [named_table, public, {read_concurrency, true}]),
+    self() ! update_cache,
+    {ok, nil}.
+
+
+handle_call(_Msg, _From, State) ->
+    {noreply, State}.
+
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+
+handle_info(update_cache, State) ->
+    case update_cache() of
+        ok ->
+            erlang:send_after(cache_refresh_ms(), self(), update_cache);
+        {error, _Reason} ->
+            erlang:send_after(cache_retry_ms(), self(), update_cache)
+    end,
+    {noreply, State};
+
+handle_info(_Msg, State) ->
+    {noreply, State}.
+
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+
+terminate(_Reason, _State) ->
+    ok.
+
+
+update_cache() ->
+    case get_keyset() of
+        {ok, KeySet} ->
+            {OldKeys, _} = lists:unzip(ets:tab2list(?MODULE)),
+            {NewKeys, _} = lists:unzip(KeySet),
+            RemovedKeys = OldKeys -- NewKeys,
+            true = ets:insert(?MODULE, KeySet),
+            [ets:delete(?MODULE, Key) || Key <- RemovedKeys],
+            ok;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+
+get_keyset() ->
+    Url = keystore_url(),
+    get_keyset(Url).
+
+
+cache_refresh_ms() ->
+    Default = 1000 * 60 * 60 * 24, %% 24 hours
+    config:get_integer("jwks", "cache_refresh_ms", Default).
+
+
+cache_retry_ms() ->
+    Default = 1000 * 60 * 60, %% 1 hour
+    config:get_integer("jwks", "cache_retry_ms", Default).
+
+
+keystore_url() ->
+    config:get("jwks", "keystore_url").
 
 
 -ifdef(TEST).
