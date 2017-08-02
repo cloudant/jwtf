@@ -28,33 +28,12 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-    Children = [
-        {jwks_cache_lru,
-            {ets_lru, start_link, [jwks_cache_lru, lru_opts()]},
-            permanent, 5000, worker, [ets_lru]}
-    ],
+    Children = [child(jwks)],
     {ok, { {one_for_all, 5, 10}, Children} }.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
 
-lru_opts() ->
-    case config:get_integer("jwtf_cache", "max_objects", 50) of
-        MxObjs when MxObjs > 0 ->
-            [{max_objects, MxObjs}];
-        _ ->
-            []
-    end ++
-    case config:get_integer("jwtf_cache", "max_size", 0) of
-        MxSize when MxSize > 0 ->
-            [{max_size, MxSize}];
-        _ ->
-            []
-    end ++
-    case config:get_integer("jwtf_cache", "max_lifetime", 0) of
-        MxLT when MxLT > 0 ->
-            [{max_lifetime, MxLT}];
-        _ ->
-            []
-    end.
+child(Child) ->
+    {Child, {Child, start_link, []}, permanent, 1000, worker, [Child]}.
