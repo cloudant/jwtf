@@ -55,7 +55,7 @@ encode(Header = {HeaderProps}, Claims, Key) ->
             {public_key, Algorithm} ->
                 public_key:sign(Message, Algorithm, Key);
             {hmac, Algorithm} ->
-                crypto:hmac(Algorithm, Key, Message)
+                crypto:mac(hmac, Algorithm, Key, Message)
         end,
         EncodedSignatureOrMac = b64url:encode(SignatureOrMac),
         {ok, <<Message/binary, $., EncodedSignatureOrMac/binary>>}
@@ -254,7 +254,7 @@ public_key_verify(Algorithm, Message, Signature, PublicKey) ->
 
 
 hmac_verify(Algorithm, Message, HMAC, SecretKey) ->
-    case crypto:hmac(Algorithm, SecretKey, Message) of
+    case crypto:mac(hmac, Algorithm, SecretKey, Message) of
         HMAC ->
             ok;
         _ ->
